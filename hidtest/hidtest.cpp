@@ -31,6 +31,39 @@
 	#include <windows.h>
 #else
 	#include <unistd.h>
+    #include <pthread.h>
+#endif
+
+static void __output_device_info(hid_device *handle)
+{
+    unsigned char buf[256];
+    int res;
+
+    while (1)
+    {
+        res = hid_read(handle, buf, USB_MAX_REPORT_SIZE);
+#ifdef WIN32
+        Sleep(500);
+#else
+        usleep(200 * 1000);
+#endif
+
+        if (res > 0)
+        {
+            printf("%s\n", buf);
+        }
+    }
+}
+
+#ifndef WIN32
+void * thread_output_device_info(void *arg)
+{
+    hid_device *handle = (hid_device*)arg;
+
+    __output_device_info(handle);
+
+    return NULL;
+}
 #endif
 
 int main(int argc, char* argv[])
@@ -113,20 +146,27 @@ int main(int argc, char* argv[])
 
 	// Set the hid_read() function to be non-blocking.
 	hid_set_nonblocking(handle, 1);
-	
-    while (1)
+
+#ifdef WIN32
+    __output_device_info(handle);
+#else
     {
-        // Try to read from the device. There shoud be no
-        // data here, but execution should not block.
-        res = hid_read(handle, buf, USB_MAX_REPORT_SIZE);
-        SleepEx(100, 1);
-        if (res > 0)
+        pthread_t tid1;
+        char str_cmd[64] = { 0 };
+
+        pthread_create(&tid1, NULL, thread_output_device_info, (void *)handle);
+
+        while (1)
         {
-            printf("%s\n", buf);
+            scanf("%s", str_cmd);
+            strcat(str_cmd, "\r\n");
+
+            hid_write(handle, str_cmd, strlen(str_cmd));
         }
     }
+#endif // WIN32
 
-
+#if 0
 	// Send a Feature Report to the device
 	buf[0] = 0x2;
 	buf[1] = 0xa0;
@@ -196,6 +236,7 @@ int main(int argc, char* argv[])
 	for (i = 0; i < res; i++)
 		printf("%02hhx ", buf[i]);
 	printf("\n");
+#endif
 
 	hid_close(handle);
 
