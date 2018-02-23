@@ -81,16 +81,16 @@ static void __output_device_info(hid_device *handle)
 
     while (1)
     {
-        res = hid_read(handle, buf, USB_MAX_REPORT_SIZE);
 #ifdef WIN32
         Sleep(500);
 #else
-        usleep(200 * 1000);
+        usleep(20 * 1000);
 #endif
 
+        res = hid_read(handle, buf, USB_MAX_REPORT_SIZE);
         if (res > 0)
         {
-            printf("%s\n", buf);
+            printf("hid device0: %s\n", buf);
         }
     }
 }
@@ -109,7 +109,24 @@ void * thread_output_device1_info(void *arg)
 {
     hid_device *handle = (hid_device*)arg;
 
-    __output_device_info(handle);
+
+    unsigned char buf[256];
+    int res;
+
+    while (1)
+    {
+#ifdef WIN32
+        Sleep(500);
+#else
+        usleep(20 * 1000);
+#endif
+
+        res = hid_read(handle, buf, USB_MAX_REPORT_SIZE);
+        if (res > 0 && strcmp((char*)buf, "...") != 0)
+        {
+            printf("hid device1: %s\n", buf);
+        }
+    }
 
     return NULL;
 }
@@ -237,7 +254,7 @@ int main(int argc, char* argv[])
             strcat(str_cmd, "\r\n");
             printf("send command:%s\n", str_cmd);
 
-            hid_write(handle1, str_cmd, strlen(str_cmd));
+            hid_write(handle1,(unsigned char*) str_cmd, strlen(str_cmd));
 
             memset(msg_buf, 0, sizeof(msg_buf));
             msg_length = make_control_cmd_message((uint8_t *)msg_buf, CMD_CONTROL_AT_COMMAND, (uint8_t *)str_cmd, strlen(str_cmd));
