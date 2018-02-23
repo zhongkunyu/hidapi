@@ -20,6 +20,12 @@
 #include <stdlib.h>
 #include "hidapi.h"
 
+
+
+#define USB_VID 0x0416
+#define USB_PID 0x5020
+#define USB_MAX_REPORT_SIZE 64
+
 // Headers needed for sleeping.
 #ifdef _WIN32
 	#include <windows.h>
@@ -45,7 +51,7 @@ int main(int argc, char* argv[])
 	
 	if (hid_init())
 		return -1;
-
+#if 0
 	devs = hid_enumerate(0x0, 0x0);
 	cur_dev = devs;	
 	while (cur_dev) {
@@ -59,6 +65,7 @@ int main(int argc, char* argv[])
 		cur_dev = cur_dev->next;
 	}
 	hid_free_enumeration(devs);
+#endif
 
 	// Set up the command buffer.
 	memset(buf,0x00,sizeof(buf));
@@ -69,7 +76,7 @@ int main(int argc, char* argv[])
 	// Open the device using the VID, PID,
 	// and optionally the Serial number.
 	////handle = hid_open(0x4d8, 0x3f, L"12345");
-	handle = hid_open(0x4d8, 0x3f, NULL);
+	handle = hid_open(USB_VID, USB_PID, NULL);
 	if (!handle) {
 		printf("unable to open device\n");
  		return 1;
@@ -107,9 +114,18 @@ int main(int argc, char* argv[])
 	// Set the hid_read() function to be non-blocking.
 	hid_set_nonblocking(handle, 1);
 	
-	// Try to read from the device. There shoud be no
-	// data here, but execution should not block.
-	res = hid_read(handle, buf, 17);
+    while (1)
+    {
+        // Try to read from the device. There shoud be no
+        // data here, but execution should not block.
+        res = hid_read(handle, buf, USB_MAX_REPORT_SIZE);
+        SleepEx(100, 1);
+        if (res > 0)
+        {
+            printf("%s\n", buf);
+        }
+    }
+
 
 	// Send a Feature Report to the device
 	buf[0] = 0x2;
