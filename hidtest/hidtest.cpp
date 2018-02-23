@@ -30,6 +30,10 @@ typedef unsigned           int uint32_t;
 
 #define USB_VID 0x0416
 #define USB_PID 0x5020
+
+#define USB_VID_1 0x0417
+#define USB_PID_1 0x5021
+
 #define USB_MAX_REPORT_SIZE 64
 
 // Headers needed for sleeping.
@@ -46,7 +50,7 @@ uint8_t make_control_cmd_message(uint8_t *msg_buf, uint8_t cmd_type, void *cmd_c
     uint8_t i = 0;
     uint8_t cmd_crc = 0;
     uint8_t *p_msg = msg_buf;
-    uint8_t *p_content = cmd_content;
+    uint8_t *p_content = (uint8_t *)cmd_content;
 
     p_msg[0] = PC_CONTROL_CMD_START_CODE;
 
@@ -100,7 +104,68 @@ void * thread_output_device_info(void *arg)
 
     return NULL;
 }
+
+void * thread_output_device1_info(void *arg)
+{
+    hid_device *handle = (hid_device*)arg;
+
+    __output_device_info(handle);
+
+    return NULL;
+}
 #endif
+
+static hid_device *open_hid_device(unsigned short vendor_id, unsigned short product_id)
+{
+    int res;
+    hid_device *handle;
+    #define MAX_STR 255
+    wchar_t wstr[MAX_STR];
+
+    // Open the device using the VID, PID,
+    // and optionally the Serial number.
+    ////handle = hid_open(0x4d8, 0x3f, L"12345");
+    handle = hid_open(vendor_id, product_id, NULL);
+    if (!handle) {
+        printf("unable to open device\n");
+        return NULL;
+    }
+
+    // Read the Manufacturer String
+    wstr[0] = 0x0000;
+    res = hid_get_manufacturer_string(handle, wstr, MAX_STR);
+    if (res < 0)
+        printf("Unable to read manufacturer string\n");
+    printf("Manufacturer String: %ls\n", wstr);
+
+    // Read the Product String
+    wstr[0] = 0x0000;
+    res = hid_get_product_string(handle, wstr, MAX_STR);
+    if (res < 0)
+        printf("Unable to read product string\n");
+    printf("Product String: %ls\n", wstr);
+
+    // Read the Serial Number String
+    wstr[0] = 0x0000;
+    res = hid_get_serial_number_string(handle, wstr, MAX_STR);
+    if (res < 0)
+        printf("Unable to read serial number string\n");
+    printf("Serial Number String: (%d) %ls", wstr[0], wstr);
+    printf("\n");
+
+    // Read Indexed String 1
+    wstr[0] = 0x0000;
+    res = hid_get_indexed_string(handle, 1, wstr, MAX_STR);
+    if (res < 0)
+        printf("Unable to read indexed string 1\n");
+    printf("Indexed String 1: %ls\n", wstr);
+
+    // Set the hid_read() function to be non-blocking.
+    hid_set_nonblocking(handle, 1);
+
+    return handle;
+}
+
 
 int main(int argc, char* argv[])
 {
@@ -108,7 +173,7 @@ int main(int argc, char* argv[])
 	unsigned char buf[256];
 	#define MAX_STR 255
 	wchar_t wstr[MAX_STR];
-	hid_device *handle;
+	hid_device *handle, *handle1;
 	int i;
 
 #ifdef WIN32
@@ -134,71 +199,45 @@ int main(int argc, char* argv[])
 		cur_dev = cur_dev->next;
 	}
 	hid_free_enumeration(devs);
-#endif
 
 	// Set up the command buffer.
 	memset(buf,0x00,sizeof(buf));
 	buf[0] = 0x01;
 	buf[1] = 0x81;
-	
+#endif
 
-	// Open the device using the VID, PID,
-	// and optionally the Serial number.
-	////handle = hid_open(0x4d8, 0x3f, L"12345");
-	handle = hid_open(USB_VID, USB_PID, NULL);
-	if (!handle) {
-		printf("unable to open device\n");
- 		return 1;
-	}
+    handle = open_hid_device(USB_VID, USB_PID);
+    if (!handle) {
+        printf("unable to open hid device\n");
+        return NULL;
+    }
 
-	// Read the Manufacturer String
-	wstr[0] = 0x0000;
-	res = hid_get_manufacturer_string(handle, wstr, MAX_STR);
-	if (res < 0)
-		printf("Unable to read manufacturer string\n");
-	printf("Manufacturer String: %ls\n", wstr);
 
-	// Read the Product String
-	wstr[0] = 0x0000;
-	res = hid_get_product_string(handle, wstr, MAX_STR);
-	if (res < 0)
-		printf("Unable to read product string\n");
-	printf("Product String: %ls\n", wstr);
-
-	// Read the Serial Number String
-	wstr[0] = 0x0000;
-	res = hid_get_serial_number_string(handle, wstr, MAX_STR);
-	if (res < 0)
-		printf("Unable to read serial number string\n");
-	printf("Serial Number String: (%d) %ls", wstr[0], wstr);
-	printf("\n");
-
-	// Read Indexed String 1
-	wstr[0] = 0x0000;
-	res = hid_get_indexed_string(handle, 1, wstr, MAX_STR);
-	if (res < 0)
-		printf("Unable to read indexed string 1\n");
-	printf("Indexed String 1: %ls\n", wstr);
-
-	// Set the hid_read() function to be non-blocking.
-	hid_set_nonblocking(handle, 1);
+    handle1 = open_hid_device(USB_VID_1, USB_PID_1);
+    if (!handle1) {
+        printf("unable to open hid device 1\n");
+        return NULL;
+    }
 
 #ifdef WIN32
     __output_device_info(handle);
 #else
     {
-        pthread_t tid1;
+        pthread_t tid1, tid2;
         char str_cmd[64] = { 0 };
         char msg_buf[1 + USB_MAX_REPORT_SIZE] = { 0 };
-        uint8_t msg_length = 0
+        uint8_t msg_length = 0;
 
         pthread_create(&tid1, NULL, thread_output_device_info, (void *)handle);
+        pthread_create(&tid2, NULL, thread_output_device1_info, (void *)handle1);
 
         while (1)
         {
             scanf("%s", str_cmd);
             strcat(str_cmd, "\r\n");
             printf("send command:%s\n", str_cmd);
+
+            hid_write(handle1, str_cmd, strlen(str_cmd));
 
             memset(msg_buf, 0, sizeof(msg_buf));
             msg_length = make_control_cmd_message((uint8_t *)msg_buf, CMD_CONTROL_AT_COMMAND, (uint8_t *)str_cmd, strlen(str_cmd));
