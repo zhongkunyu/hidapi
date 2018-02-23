@@ -20,7 +20,13 @@
 #include <stdlib.h>
 #include "hidapi.h"
 
+typedef unsigned          char uint8_t;
+typedef unsigned short     int uint16_t;
+typedef unsigned           int uint32_t;
 
+#define PC_CONTROL_CMD_START_CODE 0x7E
+#define PC_CONTROL_CMD_STOP_CODE 0xEF
+#define CMD_CONTROL_AT_COMMAND      179
 
 #define USB_VID 0x0416
 #define USB_PID 0x5020
@@ -33,6 +39,36 @@
 	#include <unistd.h>
     #include <pthread.h>
 #endif
+
+
+uint8_t make_control_cmd_message(uint8_t *msg_buf, uint8_t cmd_type, void *cmd_content, uint8_t content_size)
+{
+    uint8_t i = 0;
+    uint8_t cmd_crc = 0;
+    uint8_t *p_msg = msg_buf;
+    uint8_t *p_content = cmd_content;
+
+    p_msg[0] = PC_CONTROL_CMD_START_CODE;
+
+    p_msg[1] = cmd_type;
+    cmd_crc += p_msg[1];
+
+    p_msg[2] = content_size + 3;
+    cmd_crc += p_msg[2];
+
+    memcpy(p_msg + 3, p_content, content_size);
+    for (i = 0; i < content_size; i++)
+    {
+        cmd_crc += p_content[i];
+    }
+
+    p_msg[content_size + 3] = cmd_crc;
+    p_msg[content_size + 4] = PC_CONTROL_CMD_STOP_CODE;
+
+    return content_size + 5;
+}
+
+
 
 static void __output_device_info(hid_device *handle)
 {
@@ -153,6 +189,8 @@ int main(int argc, char* argv[])
     {
         pthread_t tid1;
         char str_cmd[64] = { 0 };
+        char msg_buf[1 + USB_MAX_REPORT_SIZE] = { 0 };
+        uint8_t msg_length = 0
 
         pthread_create(&tid1, NULL, thread_output_device_info, (void *)handle);
 
@@ -160,8 +198,11 @@ int main(int argc, char* argv[])
         {
             scanf("%s", str_cmd);
             strcat(str_cmd, "\r\n");
+            printf("send command:%s\n", str_cmd);
 
-            hid_write(handle, str_cmd, strlen(str_cmd));
+            memset(msg_buf, 0, sizeof(msg_buf));
+            msg_length = make_control_cmd_message((uint8_t *)msg_buf, CMD_CONTROL_AT_COMMAND, (uint8_t *)str_cmd, strlen(str_cmd));
+            hid_write(handle, (unsigned char*)msg_buf, msg_length);
         }
     }
 #endif // WIN32
